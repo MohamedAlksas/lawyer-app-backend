@@ -68,8 +68,20 @@ export default async function sessionRoutes(fastify) {
 
   fastify.post('/', async (request, reply) => {
     const { caseId, sessionDate, sessionTime, courtName, result, nextSessionDate, notes, attendedById } = request.body;
-    if (!caseId || !sessionDate || !courtName) {
-      return reply.status(400).send({ error: 'caseId, sessionDate, and courtName required' });
+    if (!caseId || !sessionDate) {
+      return reply.status(400).send({ error: 'caseId and sessionDate required' });
+    }
+
+    let finalCourtName = courtName;
+    if (!finalCourtName) {
+      const { data: caseItem } = await supabase
+        .from('Case')
+        .select('courtName')
+        .eq('id', caseId)
+        .maybeSingle();
+      if (caseItem) {
+        finalCourtName = caseItem.courtName;
+      }
     }
 
     const { data: session, error } = await supabase
@@ -78,7 +90,7 @@ export default async function sessionRoutes(fastify) {
         caseId,
         sessionDate,
         sessionTime,
-        courtName,
+        courtName: finalCourtName || 'Court',
         result,
         nextSessionDate: nextSessionDate || null,
         notes,

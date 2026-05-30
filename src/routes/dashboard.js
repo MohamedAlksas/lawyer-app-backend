@@ -6,12 +6,15 @@ export default async function dashboardRoutes(fastify) {
   fastify.addHook('onRequest', authenticate);
 
   fastify.get('/stats', async (request) => {
-    const today = new Date().toISOString().split('T')[0];
-    const tomorrow = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    const thirtyDaysFromNow = new Date(Date.now() + 30 * 86400000).toISOString();
+    const nowCairo = new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' }));
+    const today = nowCairo.toISOString().split('T')[0];
+    const tomCairo = new Date(nowCairo.getTime() + 86400000);
+    const tomorrow = tomCairo.toISOString().split('T')[0];
+    const futureCairo = new Date(nowCairo.getTime() + 30 * 86400000);
+    const thirtyDaysFromNow = futureCairo.toISOString();
 
     let activeCasesQuery = supabase.from('Case').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE');
-    let deadlinesQuery = supabase.from('Case').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE').lte('limitationDeadline', thirtyDaysFromNow).gte('limitationDeadline', new Date().toISOString());
+    let deadlinesQuery = supabase.from('Case').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE').lte('limitationDeadline', thirtyDaysFromNow).gte('limitationDeadline', new Date(new Date().toLocaleString('en-US', { timeZone: 'Africa/Cairo' })).toISOString());
 
     if (request.user.role === 'LAWYER') {
       activeCasesQuery = activeCasesQuery.eq('assignedLawyerId', request.user.id);

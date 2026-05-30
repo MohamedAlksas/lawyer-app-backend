@@ -25,13 +25,26 @@ export default async function paymentRoutes(fastify) {
 
   fastify.post('/', async (request, reply) => {
     const { clientId, caseId, amount, paidAt, note } = request.body;
-    if (!clientId || !caseId || amount === undefined) {
-      return reply.status(400).send({ error: 'clientId, caseId, and amount required' });
+    if (!caseId || amount === undefined) {
+      return reply.status(400).send({ error: 'caseId and amount required' });
+    }
+
+    let finalClientId = clientId;
+    if (!finalClientId) {
+      const { data: caseItem } = await supabase
+        .from('Case')
+        .select('clientId')
+        .eq('id', caseId)
+        .maybeSingle();
+      if (!caseItem) {
+        return reply.status(400).send({ error: 'Associated case not found' });
+      }
+      finalClientId = caseItem.clientId;
     }
 
     const { data: payment, error } = await supabase
       .from('Payment')
-      .insert({ clientId, caseId, amount: parseFloat(amount), paidAt: paidAt || new Date().toISOString(), note })
+      .insert({ clientId: finalClientId, caseId, amount: parseFloat(amount), paidAt: paidAt || new Date().toISOString(), note })
       .select()
       .single();
 
