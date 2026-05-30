@@ -1,0 +1,169 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  ADMIN
+  LAWYER
+  READONLY
+}
+
+enum CaseType {
+  CIVIL
+  CRIMINAL
+  FAMILY
+  COMMERCIAL
+  ADMINISTRATIVE
+  LABOR
+}
+
+enum CaseStatus {
+  ACTIVE
+  CLOSED
+  SUSPENDED
+  WON
+  LOST
+}
+
+enum SessionResult {
+  POSTPONED
+  MEMORANDUM
+  JUDGMENT
+  APPEAL
+  OTHER
+}
+
+model User {
+  id            String         @id @default(uuid())
+  fullName      String
+  email         String         @unique
+  password      String
+  role          Role           @default(LAWYER)
+  phone         String?
+  isActive      Boolean        @default(true)
+  createdAt     DateTime       @default(now())
+  cases         Case[]
+  sessions      Session[]
+  actions       Action[]
+  documents     Document[]
+  notifications Notification[]
+  clients       Client[]
+}
+
+model Client {
+  id             String    @id @default(uuid())
+  fullName       String
+  fullNameAr     String?
+  nationalId     String    @unique
+  phone          String
+  alternatePhone String?
+  address        String?
+  email          String?
+  notes          String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+  createdBy      String
+  createdByUser  User      @relation(fields: [createdBy], references: [id])
+  cases          Case[]
+  payments       Payment[]
+}
+
+model Case {
+  id                 String      @id @default(uuid())
+  caseNumber         String
+  caseYear           Int
+  courtName          String
+  circuitNumber      String?
+  caseType           CaseType
+  subject            String
+  clientId           String
+  client             Client      @relation(fields: [clientId], references: [id])
+  opposingParty      String?
+  assignedLawyerId   String
+  assignedLawyer     User        @relation(fields: [assignedLawyerId], references: [id])
+  status             CaseStatus  @default(ACTIVE)
+  filingDate         DateTime?
+  limitationDeadline DateTime?
+  agreedFee          Float       @default(0)
+  notes              String?
+  createdAt          DateTime    @default(now())
+  updatedAt          DateTime    @updatedAt
+  sessions           Session[]
+  actions            Action[]
+  documents          Document[]
+  payments           Payment[]
+
+  @@unique([caseNumber, caseYear])
+}
+
+model Session {
+  id              String         @id @default(uuid())
+  caseId          String
+  case            Case           @relation(fields: [caseId], references: [id])
+  sessionDate     DateTime
+  sessionTime     String?
+  courtName       String
+  result          SessionResult?
+  nextSessionDate DateTime?
+  notes           String?
+  attendedById    String?
+  attendedBy      User?          @relation(fields: [attendedById], references: [id])
+  createdAt       DateTime       @default(now())
+  updatedAt       DateTime       @updatedAt
+}
+
+model Action {
+  id            String   @id @default(uuid())
+  caseId        String
+  case          Case     @relation(fields: [caseId], references: [id])
+  actionType    String
+  description   String
+  performedById String
+  performedBy   User     @relation(fields: [performedById], references: [id])
+  actionDate    DateTime
+  createdAt     DateTime @default(now())
+}
+
+model Payment {
+  id        String   @id @default(uuid())
+  clientId  String
+  client    Client   @relation(fields: [clientId], references: [id])
+  caseId    String
+  case      Case     @relation(fields: [caseId], references: [id])
+  amount    Float
+  paidAt    DateTime
+  note      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Document {
+  id           String   @id @default(uuid())
+  caseId       String
+  case         Case     @relation(fields: [caseId], references: [id])
+  name         String
+  fileUrl      String
+  fileType     String
+  docCategory  String?
+  uploadedById String
+  uploadedBy   User     @relation(fields: [uploadedById], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+model Notification {
+  id            String   @id @default(uuid())
+  userId        String
+  user          User     @relation(fields: [userId], references: [id])
+  title         String
+  titleAr       String?
+  body          String
+  bodyAr        String?
+  isRead        Boolean  @default(false)
+  relatedCaseId String?
+  createdAt     DateTime @default(now())
+}
