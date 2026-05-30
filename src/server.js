@@ -11,6 +11,7 @@ import documentRoutes from './routes/documents.js';
 import notificationRoutes from './routes/notifications.js';
 import notificationTokenRoutes from './routes/notificationTokens.js';
 import dashboardRoutes from './routes/dashboard.js';
+import versionRoutes from './routes/version.js';
 import { authenticate } from './middleware/auth.js';
 
 const server = Fastify({ logger: true });
@@ -32,6 +33,7 @@ await server.register(paymentRoutes, { prefix: '/payments' });
 await server.register(documentRoutes, { prefix: '/documents' });
 await server.register(notificationRoutes, { prefix: '/notifications' });
 await server.register(notificationTokenRoutes, { prefix: '/notifications/token' });
+await server.register(versionRoutes, { prefix: '/version' });
 
 const start = async () => {
   try {
