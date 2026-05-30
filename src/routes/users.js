@@ -4,7 +4,8 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 
 export default async function userRoutes(fastify) {
 
-  fastify.addHook('onRequest', [authenticate, requireRole('ADMIN')]);
+  fastify.addHook('onRequest', authenticate);
+  fastify.addHook('onRequest', requireRole('ADMIN'));
 
   fastify.get('/', async () => {
     const { data } = await supabase

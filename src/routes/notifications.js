@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 
 export default async function notificationRoutes(fastify) {
 
-  fastify.addHook('onRequest', [authenticate]);
+  fastify.addHook('onRequest', authenticate);
 
   fastify.get('/', async (request) => {
     const { data } = await supabase

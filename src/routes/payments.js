@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 
 export default async function paymentRoutes(fastify) {
 
-  fastify.addHook('onRequest', [authenticate]);
+  fastify.addHook('onRequest', authenticate);
 
   fastify.get('/', async (request) => {
     const { caseId, clientId, page = 1, limit = 20 } = request.query;

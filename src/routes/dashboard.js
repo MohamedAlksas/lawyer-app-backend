@@ -3,7 +3,7 @@ import { authenticate } from '../middleware/auth.js';
 
 export default async function dashboardRoutes(fastify) {
 
-  fastify.addHook('onRequest', [authenticate]);
+  fastify.addHook('onRequest', authenticate);
 
   fastify.get('/stats', async (request) => {
     const today = new Date().toISOString().split('T')[0];

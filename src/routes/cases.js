@@ -3,7 +3,7 @@ import { authenticate, requireRole } from '../middleware/auth.js';
 
 export default async function caseRoutes(fastify) {
 
-  fastify.addHook('onRequest', [authenticate]);
+  fastify.addHook('onRequest', authenticate);
 
   fastify.get('/', async (request) => {
     const { search, status, caseType, lawyerId, page = 1, limit = 20 } = request.query;

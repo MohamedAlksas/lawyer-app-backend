@@ -4,7 +4,7 @@ import { uploadFile, deleteFile } from '../utils/cloudinary.js';
 
 export default async function documentRoutes(fastify) {
 
-  fastify.addHook('onRequest', [authenticate]);
+  fastify.addHook('onRequest', authenticate);
 
   fastify.post('/', async (request, reply) => {
     const data = await request.file();
