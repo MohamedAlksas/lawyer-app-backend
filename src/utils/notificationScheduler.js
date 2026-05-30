@@ -1,5 +1,6 @@
 import cron from 'node-cron';
 import { supabase } from './supabase.js';
+import { sendPushNotification } from './firebase.js';
 
 async function scheduleNotifications() {
   const now = new Date().toISOString();
@@ -17,44 +18,46 @@ async function scheduleNotifications() {
     const diffHours = diffMs / (1000 * 60 * 60);
 
     if (diffHours <= 24 && diffHours > 23) {
-      const { data: existing } = await supabase
-        .from('Notification')
-        .select('id')
-        .eq('userId', session.case.assignedLawyerId)
-        .eq('title', 'Upcoming Session Reminder (24h)')
-        .eq('relatedCaseId', session.caseId)
-        .maybeSingle();
-
+      const title = 'Upcoming Session Reminder (24h)';
+      const body = `Session for case ${session.case.caseNumber}/${session.case.caseYear} at ${session.courtName} in 24 hours`;
+      const existing = await exists(session.case.assignedLawyerId, title, session.caseId);
       if (!existing) {
         await supabase.from('Notification').insert({
           userId: session.case.assignedLawyerId,
-          title: 'Upcoming Session Reminder (24h)',
+          title,
           titleAr: 'تذكير جلسة قادمة (24 ساعة)',
-          body: `Session for case ${session.case.caseNumber}/${session.case.caseYear} at ${session.courtName} in 24 hours`,
+          body,
           bodyAr: `جلسة القضية ${session.case.caseNumber}/${session.case.caseYear} في ${session.courtName} بعد 24 ساعة`,
           relatedCaseId: session.caseId,
         });
+        await sendPushNotification(
+          session.case.assignedLawyerId,
+          'تذكير جلسة قادمة',
+          `جلسة القضية ${session.case.caseNumber}/${session.case.caseYear} بعد 24 ساعة`,
+          { type: 'session_reminder', caseId: session.caseId }
+        );
       }
     }
 
     if (diffHours <= 2 && diffHours > 1) {
-      const { data: existing } = await supabase
-        .from('Notification')
-        .select('id')
-        .eq('userId', session.case.assignedLawyerId)
-        .eq('title', 'Upcoming Session Reminder (2h)')
-        .eq('relatedCaseId', session.caseId)
-        .maybeSingle();
-
+      const title = 'Upcoming Session Reminder (2h)';
+      const body = `Session for case ${session.case.caseNumber}/${session.case.caseYear} at ${session.courtName} in 2 hours`;
+      const existing = await exists(session.case.assignedLawyerId, title, session.caseId);
       if (!existing) {
         await supabase.from('Notification').insert({
           userId: session.case.assignedLawyerId,
-          title: 'Upcoming Session Reminder (2h)',
+          title,
           titleAr: 'تذكير جلسة قادمة (ساعتان)',
-          body: `Session for case ${session.case.caseNumber}/${session.case.caseYear} at ${session.courtName} in 2 hours`,
+          body,
           bodyAr: `جلسة القضية ${session.case.caseNumber}/${session.case.caseYear} في ${session.courtName} بعد ساعتان`,
           relatedCaseId: session.caseId,
         });
+        await sendPushNotification(
+          session.case.assignedLawyerId,
+          'تذكير جلسة قادمة',
+          `جلسة القضية ${session.case.caseNumber}/${session.case.caseYear} بعد ساعتان`,
+          { type: 'session_reminder', caseId: session.caseId }
+        );
       }
     }
   }
@@ -73,27 +76,39 @@ async function scheduleNotifications() {
       const diffDays = diffMs / (1000 * 60 * 60 * 24);
 
       if (diffDays <= 30 && diffDays > 29) {
-        const { data: existing } = await supabase
-          .from('Notification')
-          .select('id')
-          .eq('userId', caseItem.assignedLawyerId)
-          .eq('title', 'Limitation Deadline Approaching')
-          .eq('relatedCaseId', caseItem.id)
-          .maybeSingle();
-
+        const title = 'Limitation Deadline Approaching';
+        const body = `Case ${caseItem.caseNumber}/${caseItem.caseYear} limitation deadline is within 30 days`;
+        const existing = await exists(caseItem.assignedLawyerId, title, caseItem.id);
         if (!existing) {
           await supabase.from('Notification').insert({
             userId: caseItem.assignedLawyerId,
-            title: 'Limitation Deadline Approaching',
+            title,
             titleAr: 'اقتراب موعد التقادم',
-            body: `Case ${caseItem.caseNumber}/${caseItem.caseYear} limitation deadline is within 30 days`,
+            body,
             bodyAr: `موعد التقادم للقضية ${caseItem.caseNumber}/${caseItem.caseYear} خلال 30 يومًا`,
             relatedCaseId: caseItem.id,
           });
+          await sendPushNotification(
+            caseItem.assignedLawyerId,
+            'تنبيه التقادم',
+            body,
+            { type: 'limitation_alert', caseId: caseItem.id }
+          );
         }
       }
     }
   }
+}
+
+async function exists(userId, title, relatedCaseId) {
+  const { data } = await supabase
+    .from('Notification')
+    .select('id')
+    .eq('userId', userId)
+    .eq('title', title)
+    .eq('relatedCaseId', relatedCaseId)
+    .maybeSingle();
+  return !!data;
 }
 
 cron.schedule('*/30 * * * *', () => {

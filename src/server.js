@@ -9,6 +9,7 @@ import sessionRoutes from './routes/sessions.js';
 import paymentRoutes from './routes/payments.js';
 import documentRoutes from './routes/documents.js';
 import notificationRoutes from './routes/notifications.js';
+import notificationTokenRoutes from './routes/notificationTokens.js';
 import dashboardRoutes from './routes/dashboard.js';
 import { authenticate } from './middleware/auth.js';
 
@@ -30,6 +31,7 @@ await server.register(sessionRoutes, { prefix: '/sessions' });
 await server.register(paymentRoutes, { prefix: '/payments' });
 await server.register(documentRoutes, { prefix: '/documents' });
 await server.register(notificationRoutes, { prefix: '/notifications' });
+await server.register(notificationTokenRoutes, { prefix: '/notifications/token' });
 
 const start = async () => {
   try {

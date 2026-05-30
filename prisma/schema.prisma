@@ -167,3 +167,15 @@ model Notification {
   relatedCaseId String?
   createdAt     DateTime @default(now())
 }
+
+model DeviceToken {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id])
+  token     String
+  platform  String   @default("mobile")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([userId, token])
+}
