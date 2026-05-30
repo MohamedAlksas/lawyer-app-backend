@@ -1,34 +1,26 @@
+import { supabase } from '../utils/supabase.js';
 import { authenticate } from '../middleware/auth.js';
 
 export default async function paymentRoutes(fastify) {
-  const prisma = fastify.prisma;
 
   fastify.addHook('onRequest', [authenticate]);
 
   fastify.get('/', async (request) => {
     const { caseId, clientId, page = 1, limit = 20 } = request.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to = from + parseInt(limit) - 1;
 
-    const where = {};
-    if (caseId) where.caseId = caseId;
-    if (clientId) where.clientId = clientId;
+    let query = supabase
+      .from('Payment')
+      .select('*, client:Client(id, fullName), case:Case(id, caseNumber, caseYear)', { count: 'exact' });
 
-    const [payments, total] = await Promise.all([
-      prisma.payment.findMany({
-        where,
-        skip,
-        take,
-        include: {
-          client: { select: { id: true, fullName: true } },
-          case: { select: { id: true, caseNumber: true, caseYear: true } },
-        },
-        orderBy: { paidAt: 'desc' },
-      }),
-      prisma.payment.count({ where }),
-    ]);
+    if (caseId) query = query.eq('caseId', caseId);
+    if (clientId) query = query.eq('clientId', clientId);
 
-    return { data: payments, total, page: parseInt(page), limit: take };
+    query = query.order('paidAt', { ascending: false }).range(from, to);
+
+    const { data, count } = await query;
+    return { data: data || [], total: count || 0, page: parseInt(page), limit: parseInt(limit) };
   });
 
   fastify.post('/', async (request, reply) => {
@@ -37,15 +29,13 @@ export default async function paymentRoutes(fastify) {
       return reply.status(400).send({ error: 'clientId, caseId, and amount required' });
     }
 
-    const payment = await prisma.payment.create({
-      data: {
-        clientId, caseId,
-        amount: parseFloat(amount),
-        paidAt: paidAt ? new Date(paidAt) : new Date(),
-        note,
-      },
-    });
+    const { data: payment, error } = await supabase
+      .from('Payment')
+      .insert({ clientId, caseId, amount: parseFloat(amount), paidAt: paidAt || new Date().toISOString(), note })
+      .select()
+      .single();
 
+    if (error) return reply.status(400).send({ error: error.message });
     return reply.status(201).send(payment);
   });
 
@@ -53,23 +43,23 @@ export default async function paymentRoutes(fastify) {
     const { amount, paidAt, note } = request.body;
     const data = {};
     if (amount !== undefined) data.amount = parseFloat(amount);
-    if (paidAt !== undefined) data.paidAt = new Date(paidAt);
+    if (paidAt !== undefined) data.paidAt = paidAt;
     if (note !== undefined) data.note = note;
 
-    try {
-      const payment = await prisma.payment.update({ where: { id: request.params.id }, data });
-      return payment;
-    } catch {
-      return reply.status(404).send({ error: 'Payment not found' });
-    }
+    const { data: payment, error } = await supabase
+      .from('Payment')
+      .update(data)
+      .eq('id', request.params.id)
+      .select()
+      .single();
+
+    if (error || !payment) return reply.status(404).send({ error: 'Payment not found' });
+    return payment;
   });
 
   fastify.delete('/:id', async (request, reply) => {
-    try {
-      await prisma.payment.delete({ where: { id: request.params.id } });
-      return { message: 'Payment deleted' };
-    } catch {
-      return reply.status(404).send({ error: 'Payment not found' });
-    }
+    const { error } = await supabase.from('Payment').delete().eq('id', request.params.id);
+    if (error) return reply.status(404).send({ error: 'Payment not found' });
+    return { message: 'Payment deleted' };
   });
 }

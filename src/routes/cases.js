@@ -1,69 +1,51 @@
+import { supabase } from '../utils/supabase.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
 export default async function caseRoutes(fastify) {
-  const prisma = fastify.prisma;
 
   fastify.addHook('onRequest', [authenticate]);
 
   fastify.get('/', async (request) => {
     const { search, status, caseType, lawyerId, page = 1, limit = 20 } = request.query;
-    const skip = (parseInt(page) - 1) * parseInt(limit);
-    const take = parseInt(limit);
+    const from = (parseInt(page) - 1) * parseInt(limit);
+    const to = from + parseInt(limit) - 1;
 
-    const where = {};
+    let query = supabase
+      .from('Case')
+      .select('*, client:Client(id, fullName), assignedLawyer:User!assignedLawyerId(id, fullName), sessions:Session(count)', { count: 'exact' });
+
     if (search) {
-      where.OR = [
-        { caseNumber: { contains: search } },
-        { subject: { contains: search, mode: 'insensitive' } },
-        { opposingParty: { contains: search, mode: 'insensitive' } },
-      ];
+      query = query.or(`caseNumber.ilike.%${search}%,subject.ilike.%${search}%,opposingParty.ilike.%${search}%`);
     }
-    if (status) where.status = status;
-    if (caseType) where.caseType = caseType;
-    if (lawyerId) where.assignedLawyerId = lawyerId;
+    if (status) query = query.eq('status', status);
+    if (caseType) query = query.eq('caseType', caseType);
+    if (lawyerId) query = query.eq('assignedLawyerId', lawyerId);
 
     if (request.user.role === 'LAWYER') {
-      where.assignedLawyerId = request.user.id;
+      query = query.eq('assignedLawyerId', request.user.id);
     }
 
-    const [cases, total] = await Promise.all([
-      prisma.case.findMany({
-        where,
-        skip,
-        take,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          client: { select: { id: true, fullName: true } },
-          assignedLawyer: { select: { id: true, fullName: true } },
-          _count: { select: { sessions: true } },
-        },
-      }),
-      prisma.case.count({ where }),
-    ]);
+    query = query.order('createdAt', { ascending: false }).range(from, to);
 
-    return { data: cases, total, page: parseInt(page), limit: take };
+    const { data, count } = await query;
+    return { data: data || [], total: count || 0, page: parseInt(page), limit: parseInt(limit) };
   });
 
   fastify.get('/:id', async (request, reply) => {
-    const caseItem = await prisma.case.findUnique({
-      where: { id: request.params.id },
-      include: {
-        client: true,
-        assignedLawyer: { select: { id: true, fullName: true } },
-        sessions: { orderBy: { sessionDate: 'desc' } },
-        actions: { orderBy: { actionDate: 'desc' }, take: 10 },
-        documents: { orderBy: { createdAt: 'desc' } },
-        payments: { orderBy: { paidAt: 'desc' } },
-      },
-    });
+    const { data: caseItem } = await supabase
+      .from('Case')
+      .select('*, client:Client(*), assignedLawyer:User!assignedLawyerId(id, fullName), sessions:Session(*, attendedBy:User(id, fullName)), actions:Action(*, performedBy:User(id, fullName)), documents:Document(*, uploadedBy:User(id, fullName)), payments:Payment(*)')
+      .eq('id', request.params.id)
+      .maybeSingle();
+
     if (!caseItem) return reply.status(404).send({ error: 'Case not found' });
 
     if (request.user.role === 'LAWYER' && caseItem.assignedLawyerId !== request.user.id) {
       return reply.status(403).send({ error: 'Access denied' });
     }
 
-    const totalPaid = caseItem.payments.reduce((sum, p) => sum + p.amount, 0);
-    return { ...caseItem, totalPaid, remaining: caseItem.agreedFee - totalPaid };
+    const totalPaid = (caseItem.payments || []).reduce((sum, p) => sum + (p.amount || 0), 0);
+    return { ...caseItem, totalPaid, remaining: (caseItem.agreedFee || 0) - totalPaid };
   });
 
   fastify.post('/', async (request, reply) => {
@@ -76,23 +58,26 @@ export default async function caseRoutes(fastify) {
       return reply.status(400).send({ error: 'Missing required fields' });
     }
 
-    const caseItem = await prisma.case.create({
-      data: {
+    const { data: caseItem, error } = await supabase
+      .from('Case')
+      .insert({
         caseNumber: String(caseNumber), caseYear: parseInt(caseYear), courtName, circuitNumber,
         caseType, subject, clientId, opposingParty, assignedLawyerId,
-        filingDate: filingDate ? new Date(filingDate) : null,
-        limitationDeadline: limitationDeadline ? new Date(limitationDeadline) : null,
+        filingDate: filingDate || null, limitationDeadline: limitationDeadline || null,
         agreedFee: agreedFee ? parseFloat(agreedFee) : 0, notes,
-      },
-    });
+      })
+      .select()
+      .single();
+
+    if (error) return reply.status(400).send({ error: error.message });
     return reply.status(201).send(caseItem);
   });
 
   fastify.put('/:id', async (request, reply) => {
-    const caseItem = await prisma.case.findUnique({ where: { id: request.params.id } });
-    if (!caseItem) return reply.status(404).send({ error: 'Case not found' });
+    const { data: existing } = await supabase.from('Case').select('assignedLawyerId').eq('id', request.params.id).maybeSingle();
+    if (!existing) return reply.status(404).send({ error: 'Case not found' });
 
-    if (request.user.role === 'LAWYER' && caseItem.assignedLawyerId !== request.user.id) {
+    if (request.user.role === 'LAWYER' && existing.assignedLawyerId !== request.user.id) {
       return reply.status(403).send({ error: 'Access denied' });
     }
 
@@ -112,57 +97,55 @@ export default async function caseRoutes(fastify) {
     if (opposingParty !== undefined) data.opposingParty = opposingParty;
     if (assignedLawyerId !== undefined) data.assignedLawyerId = assignedLawyerId;
     if (status !== undefined) data.status = status;
-    if (filingDate !== undefined) data.filingDate = filingDate ? new Date(filingDate) : null;
-    if (limitationDeadline !== undefined) data.limitationDeadline = limitationDeadline ? new Date(limitationDeadline) : null;
+    if (filingDate !== undefined) data.filingDate = filingDate || null;
+    if (limitationDeadline !== undefined) data.limitationDeadline = limitationDeadline || null;
     if (agreedFee !== undefined) data.agreedFee = parseFloat(agreedFee);
     if (notes !== undefined) data.notes = notes;
 
-    const updated = await prisma.case.update({ where: { id: request.params.id }, data });
+    const { data: updated, error } = await supabase.from('Case').update(data).eq('id', request.params.id).select().single();
+    if (error) return reply.status(400).send({ error: error.message });
     return updated;
   });
 
   fastify.delete('/:id', requireRole('ADMIN'), async (request, reply) => {
-    try {
-      await prisma.case.delete({ where: { id: request.params.id } });
-      return { message: 'Case deleted' };
-    } catch {
-      return reply.status(404).send({ error: 'Case not found' });
-    }
+    const { error } = await supabase.from('Case').delete().eq('id', request.params.id);
+    if (error) return reply.status(404).send({ error: 'Case not found' });
+    return { message: 'Case deleted' };
   });
 
   fastify.get('/:id/sessions', async (request, reply) => {
-    const sessions = await prisma.session.findMany({
-      where: { caseId: request.params.id },
-      include: { attendedBy: { select: { id: true, fullName: true } } },
-      orderBy: { sessionDate: 'desc' },
-    });
-    return sessions;
+    const { data } = await supabase
+      .from('Session')
+      .select('*, attendedBy:User(id, fullName)')
+      .eq('caseId', request.params.id)
+      .order('sessionDate', { ascending: false });
+    return data || [];
   });
 
   fastify.get('/:id/actions', async (request, reply) => {
-    const actions = await prisma.action.findMany({
-      where: { caseId: request.params.id },
-      include: { performedBy: { select: { id: true, fullName: true } } },
-      orderBy: { actionDate: 'desc' },
-    });
-    return actions;
+    const { data } = await supabase
+      .from('Action')
+      .select('*, performedBy:User(id, fullName)')
+      .eq('caseId', request.params.id)
+      .order('actionDate', { ascending: false });
+    return data || [];
   });
 
   fastify.get('/:id/documents', async (request, reply) => {
-    const documents = await prisma.document.findMany({
-      where: { caseId: request.params.id },
-      include: { uploadedBy: { select: { id: true, fullName: true } } },
-      orderBy: { createdAt: 'desc' },
-    });
-    return documents;
+    const { data } = await supabase
+      .from('Document')
+      .select('*, uploadedBy:User(id, fullName)')
+      .eq('caseId', request.params.id)
+      .order('createdAt', { ascending: false });
+    return data || [];
   });
 
   fastify.get('/:id/payments', async (request, reply) => {
-    const payments = await prisma.payment.findMany({
-      where: { caseId: request.params.id },
-      include: { client: { select: { id: true, fullName: true } } },
-      orderBy: { paidAt: 'desc' },
-    });
-    return payments;
+    const { data } = await supabase
+      .from('Payment')
+      .select('*, client:Client(id, fullName)')
+      .eq('caseId', request.params.id)
+      .order('paidAt', { ascending: false });
+    return data || [];
   });
 }

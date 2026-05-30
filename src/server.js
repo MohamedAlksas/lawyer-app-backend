@@ -1,7 +1,6 @@
 import Fastify from 'fastify';
 import cors from '@fastify/cors';
 import multipart from '@fastify/multipart';
-import { PrismaClient } from '@prisma/client';
 import authRoutes from './routes/auth.js';
 import userRoutes from './routes/users.js';
 import clientRoutes from './routes/clients.js';
@@ -13,10 +12,8 @@ import notificationRoutes from './routes/notifications.js';
 import dashboardRoutes from './routes/dashboard.js';
 import { authenticate } from './middleware/auth.js';
 
-const prisma = new PrismaClient();
 const server = Fastify({ logger: true });
 
-server.decorate('prisma', prisma);
 server.decorate('authenticate', authenticate);
 
 await server.register(cors, { origin: true, credentials: true });

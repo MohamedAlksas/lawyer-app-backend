@@ -1,8 +1,8 @@
 import bcrypt from 'bcrypt';
+import { supabase } from '../utils/supabase.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.js';
 
 export default async function authRoutes(fastify) {
-  const prisma = fastify.prisma;
 
   fastify.post('/login', async (request, reply) => {
     const { email, password } = request.body;
@@ -10,8 +10,13 @@ export default async function authRoutes(fastify) {
       return reply.status(400).send({ error: 'Email and password required' });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
-    if (!user || !user.isActive) {
+    const { data: user, error } = await supabase
+      .from('User')
+      .select('*')
+      .eq('email', email)
+      .maybeSingle();
+
+    if (error || !user || !user.isActive) {
       return reply.status(401).send({ error: 'Invalid credentials' });
     }
 
@@ -38,7 +43,12 @@ export default async function authRoutes(fastify) {
 
     try {
       const decoded = verifyRefreshToken(refreshToken);
-      const user = await prisma.user.findUnique({ where: { id: decoded.id } });
+      const { data: user } = await supabase
+        .from('User')
+        .select('*')
+        .eq('id', decoded.id)
+        .maybeSingle();
+
       if (!user || !user.isActive) {
         return reply.status(401).send({ error: 'User not found or inactive' });
       }

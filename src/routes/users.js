@@ -1,17 +1,17 @@
 import bcrypt from 'bcrypt';
+import { supabase } from '../utils/supabase.js';
 import { authenticate, requireRole } from '../middleware/auth.js';
 
 export default async function userRoutes(fastify) {
-  const prisma = fastify.prisma;
 
   fastify.addHook('onRequest', [authenticate, requireRole('ADMIN')]);
 
-  fastify.get('/', async (request) => {
-    const users = await prisma.user.findMany({
-      select: { id: true, fullName: true, email: true, role: true, phone: true, isActive: true, createdAt: true },
-      orderBy: { createdAt: 'desc' },
-    });
-    return users;
+  fastify.get('/', async () => {
+    const { data } = await supabase
+      .from('User')
+      .select('id, fullName, email, role, phone, isActive, createdAt')
+      .order('createdAt', { ascending: false });
+    return data || [];
   });
 
   fastify.post('/', async (request, reply) => {
@@ -20,24 +20,34 @@ export default async function userRoutes(fastify) {
       return reply.status(400).send({ error: 'fullName, email, and password required' });
     }
 
-    const existing = await prisma.user.findUnique({ where: { email } });
+    const { data: existing } = await supabase
+      .from('User')
+      .select('id')
+      .eq('email', email)
+      .maybeSingle();
+
     if (existing) {
       return reply.status(409).send({ error: 'Email already in use' });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    const user = await prisma.user.create({
-      data: { fullName, email, password: hashedPassword, role: role || 'LAWYER', phone },
-      select: { id: true, fullName: true, email: true, role: true, phone: true, isActive: true, createdAt: true },
-    });
+    const { data: user, error } = await supabase
+      .from('User')
+      .insert({ fullName, email, password: hashedPassword, role: role || 'LAWYER', phone })
+      .select('id, fullName, email, role, phone, isActive, createdAt')
+      .single();
+
+    if (error) return reply.status(400).send({ error: error.message });
     return reply.status(201).send(user);
   });
 
   fastify.get('/:id', async (request, reply) => {
-    const user = await prisma.user.findUnique({
-      where: { id: request.params.id },
-      select: { id: true, fullName: true, email: true, role: true, phone: true, isActive: true, createdAt: true },
-    });
+    const { data: user } = await supabase
+      .from('User')
+      .select('id, fullName, email, role, phone, isActive, createdAt')
+      .eq('id', request.params.id)
+      .maybeSingle();
+
     if (!user) return reply.status(404).send({ error: 'User not found' });
     return user;
   });
@@ -52,24 +62,24 @@ export default async function userRoutes(fastify) {
     if (isActive !== undefined) data.isActive = isActive;
     if (password) data.password = await bcrypt.hash(password, 10);
 
-    try {
-      const user = await prisma.user.update({
-        where: { id: request.params.id },
-        data,
-        select: { id: true, fullName: true, email: true, role: true, phone: true, isActive: true },
-      });
-      return user;
-    } catch {
-      return reply.status(404).send({ error: 'User not found' });
-    }
+    const { data: user, error } = await supabase
+      .from('User')
+      .update(data)
+      .eq('id', request.params.id)
+      .select('id, fullName, email, role, phone, isActive')
+      .single();
+
+    if (error || !user) return reply.status(404).send({ error: 'User not found' });
+    return user;
   });
 
   fastify.delete('/:id', async (request, reply) => {
-    try {
-      await prisma.user.delete({ where: { id: request.params.id } });
-      return { message: 'User deleted' };
-    } catch {
-      return reply.status(404).send({ error: 'User not found' });
-    }
+    const { error } = await supabase
+      .from('User')
+      .delete()
+      .eq('id', request.params.id);
+
+    if (error) return reply.status(404).send({ error: 'User not found' });
+    return { message: 'User deleted' };
   });
 }

@@ -1,43 +1,32 @@
+import { supabase } from '../utils/supabase.js';
 import { authenticate } from '../middleware/auth.js';
 
 export default async function sessionRoutes(fastify) {
-  const prisma = fastify.prisma;
 
   fastify.addHook('onRequest', [authenticate]);
 
   fastify.get('/', async (request) => {
     const { date, lawyerId } = request.query;
-    const where = {};
+    let query = supabase
+      .from('Session')
+      .select('*, case:Case(caseNumber, caseYear, caseType, courtName, client:Client(id, fullName), assignedLawyer:User!assignedLawyerId(id, fullName)), attendedBy:User(id, fullName)');
 
     if (date) {
-      const dayStart = new Date(date);
-      const dayEnd = new Date(dayStart);
+      const dayEnd = new Date(date);
       dayEnd.setDate(dayEnd.getDate() + 1);
-      where.sessionDate = { gte: dayStart, lt: dayEnd };
+      query = query.gte('sessionDate', date).lt('sessionDate', dayEnd.toISOString().split('T')[0]);
     }
 
     if (lawyerId) {
-      where.case = { assignedLawyerId: lawyerId };
+      query = query.eq('case.assignedLawyerId', lawyerId);
     } else if (request.user.role === 'LAWYER') {
-      where.case = { assignedLawyerId: request.user.id };
+      query = query.eq('case.assignedLawyerId', request.user.id);
     }
 
-    const sessions = await prisma.session.findMany({
-      where,
-      include: {
-        case: {
-          select: {
-            id: true, caseNumber: true, caseYear: true, caseType: true, courtName: true,
-            client: { select: { id: true, fullName: true } },
-            assignedLawyer: { select: { id: true, fullName: true } },
-          },
-        },
-        attendedBy: { select: { id: true, fullName: true } },
-      },
-      orderBy: { sessionDate: 'asc' },
-    });
+    query = query.order('sessionDate', { ascending: true });
 
-    return sessions;
+    const { data } = await query;
+    return data || [];
   });
 
   fastify.get('/calendar', async (request) => {
@@ -45,45 +34,34 @@ export default async function sessionRoutes(fastify) {
     const now = new Date();
     const y = year ? parseInt(year) : now.getFullYear();
     const m = month ? parseInt(month) - 1 : now.getMonth();
+    const monthStart = new Date(y, m, 1).toISOString().split('T')[0];
+    const monthEnd = new Date(y, m + 1, 1).toISOString().split('T')[0];
 
-    const monthStart = new Date(y, m, 1);
-    const monthEnd = new Date(y, m + 1, 1);
-
-    const where = {
-      sessionDate: { gte: monthStart, lt: monthEnd },
-    };
+    let query = supabase
+      .from('Session')
+      .select('id, sessionDate, sessionTime, courtName, result, case:Case(id, caseNumber, caseYear, caseType, assignedLawyerId)')
+      .gte('sessionDate', monthStart)
+      .lt('sessionDate', monthEnd);
 
     if (lawyerId) {
-      where.case = { assignedLawyerId: lawyerId };
+      query = query.eq('case.assignedLawyerId', lawyerId);
     } else if (request.user.role === 'LAWYER') {
-      where.case = { assignedLawyerId: request.user.id };
+      query = query.eq('case.assignedLawyerId', request.user.id);
     }
 
-    const sessions = await prisma.session.findMany({
-      where,
-      select: {
-        id: true, sessionDate: true, sessionTime: true, courtName: true, result: true,
-        case: { select: { id: true, caseNumber: true, caseYear: true, caseType: true, assignedLawyerId: true } },
-      },
-      orderBy: { sessionDate: 'asc' },
-    });
+    query = query.order('sessionDate', { ascending: true });
 
-    return sessions;
+    const { data } = await query;
+    return data || [];
   });
 
   fastify.get('/:id', async (request, reply) => {
-    const session = await prisma.session.findUnique({
-      where: { id: request.params.id },
-      include: {
-        case: {
-          select: {
-            id: true, caseNumber: true, caseYear: true, caseType: true, courtName: true,
-            client: { select: { id: true, fullName: true } },
-          },
-        },
-        attendedBy: { select: { id: true, fullName: true } },
-      },
-    });
+    const { data: session } = await supabase
+      .from('Session')
+      .select('*, case:Case(id, caseNumber, caseYear, caseType, courtName, client:Client(id, fullName)), attendedBy:User(id, fullName)')
+      .eq('id', request.params.id)
+      .maybeSingle();
+
     if (!session) return reply.status(404).send({ error: 'Session not found' });
     return session;
   });
@@ -94,27 +72,29 @@ export default async function sessionRoutes(fastify) {
       return reply.status(400).send({ error: 'caseId, sessionDate, and courtName required' });
     }
 
-    const session = await prisma.session.create({
-      data: {
+    const { data: session, error } = await supabase
+      .from('Session')
+      .insert({
         caseId,
-        sessionDate: new Date(sessionDate),
+        sessionDate,
         sessionTime,
         courtName,
         result,
-        nextSessionDate: nextSessionDate ? new Date(nextSessionDate) : null,
+        nextSessionDate: nextSessionDate || null,
         notes,
         attendedById: attendedById || request.user.id,
-      },
-    });
+      })
+      .select()
+      .single();
 
-    await prisma.action.create({
-      data: {
-        caseId,
-        actionType: 'SESSION_ADDED',
-        description: `Session added on ${sessionDate} at ${courtName}`,
-        performedById: request.user.id,
-        actionDate: new Date(),
-      },
+    if (error) return reply.status(400).send({ error: error.message });
+
+    await supabase.from('Action').insert({
+      caseId,
+      actionType: 'SESSION_ADDED',
+      description: `Session added on ${sessionDate} at ${courtName}`,
+      performedById: request.user.id,
+      actionDate: new Date().toISOString(),
     });
 
     return reply.status(201).send(session);
@@ -123,28 +103,22 @@ export default async function sessionRoutes(fastify) {
   fastify.put('/:id', async (request, reply) => {
     const { sessionDate, sessionTime, courtName, result, nextSessionDate, notes, attendedById } = request.body;
     const data = {};
-    if (sessionDate !== undefined) data.sessionDate = new Date(sessionDate);
+    if (sessionDate !== undefined) data.sessionDate = sessionDate;
     if (sessionTime !== undefined) data.sessionTime = sessionTime;
     if (courtName !== undefined) data.courtName = courtName;
     if (result !== undefined) data.result = result;
-    if (nextSessionDate !== undefined) data.nextSessionDate = nextSessionDate ? new Date(nextSessionDate) : null;
+    if (nextSessionDate !== undefined) data.nextSessionDate = nextSessionDate || null;
     if (notes !== undefined) data.notes = notes;
     if (attendedById !== undefined) data.attendedById = attendedById;
 
-    try {
-      const session = await prisma.session.update({ where: { id: request.params.id }, data });
-      return session;
-    } catch {
-      return reply.status(404).send({ error: 'Session not found' });
-    }
+    const { data: session, error } = await supabase.from('Session').update(data).eq('id', request.params.id).select().single();
+    if (error || !session) return reply.status(404).send({ error: 'Session not found' });
+    return session;
   });
 
   fastify.delete('/:id', async (request, reply) => {
-    try {
-      await prisma.session.delete({ where: { id: request.params.id } });
-      return { message: 'Session deleted' };
-    } catch {
-      return reply.status(404).send({ error: 'Session not found' });
-    }
+    const { error } = await supabase.from('Session').delete().eq('id', request.params.id);
+    if (error) return reply.status(404).send({ error: 'Session not found' });
+    return { message: 'Session deleted' };
   });
 }
