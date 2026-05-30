@@ -107,7 +107,7 @@ export default async function caseRoutes(fastify) {
     return updated;
   });
 
-  fastify.delete('/:id', requireRole('ADMIN'), async (request, reply) => {
+  fastify.delete('/:id', { preHandler: requireRole('ADMIN') }, async (request, reply) => {
     const { error } = await supabase.from('Case').delete().eq('id', request.params.id);
     if (error) return reply.status(404).send({ error: 'Case not found' });
     return { message: 'Case deleted' };

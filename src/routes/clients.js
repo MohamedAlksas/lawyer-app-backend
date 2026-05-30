@@ -89,7 +89,7 @@ export default async function clientRoutes(fastify) {
     return client;
   });
 
-  fastify.delete('/:id', requireRole('ADMIN'), async (request, reply) => {
+  fastify.delete('/:id', { preHandler: requireRole('ADMIN') }, async (request, reply) => {
     const { error } = await supabase.from('Client').delete().eq('id', request.params.id);
     if (error) return reply.status(404).send({ error: 'Client not found' });
     return { message: 'Client deleted' };
