@@ -4,6 +4,19 @@ import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '.
 
 export default async function authRoutes(fastify) {
 
+  fastify.get('/me', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+    const { data: user, error } = await supabase
+      .from('User')
+      .select('id, fullName, email, role, isActive, createdAt')
+      .eq('id', request.user.id)
+      .maybeSingle();
+
+    if (error || !user) {
+      return reply.status(404).send({ error: 'User not found' });
+    }
+    return { user };
+  });
+
   fastify.post('/login', async (request, reply) => {
     const { email, password } = request.body;
     if (!email || !password) {
