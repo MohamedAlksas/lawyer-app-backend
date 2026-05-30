@@ -9,7 +9,7 @@ export default async function sessionRoutes(fastify) {
     const { date, lawyerId } = request.query;
     let query = supabase
       .from('Session')
-      .select('*, case:Case(caseNumber, caseYear, caseType, courtName, client:Client(id, fullName), assignedLawyer:User!assignedLawyerId(id, fullName)), attendedBy:User(id, fullName)');
+      .select('*, case:Case!inner(caseNumber, caseYear, caseType, courtName, client:Client(id, fullName), assignedLawyer:User!assignedLawyerId(id, fullName)), attendedBy:User(id, fullName)');
 
     if (date) {
       const dayEnd = new Date(date);
@@ -39,7 +39,7 @@ export default async function sessionRoutes(fastify) {
 
     let query = supabase
       .from('Session')
-      .select('id, sessionDate, sessionTime, courtName, result, case:Case(id, caseNumber, caseYear, caseType, assignedLawyerId)')
+      .select('id, sessionDate, sessionTime, courtName, result, case:Case!inner(id, caseNumber, caseYear, caseType, assignedLawyerId)')
       .gte('sessionDate', monthStart)
       .lt('sessionDate', monthEnd);
 
@@ -110,6 +110,7 @@ export default async function sessionRoutes(fastify) {
     if (nextSessionDate !== undefined) data.nextSessionDate = nextSessionDate || null;
     if (notes !== undefined) data.notes = notes;
     if (attendedById !== undefined) data.attendedById = attendedById;
+    data.updatedAt = new Date().toISOString();
 
     const { data: session, error } = await supabase.from('Session').update(data).eq('id', request.params.id).select().single();
     if (error || !session) return reply.status(404).send({ error: 'Session not found' });

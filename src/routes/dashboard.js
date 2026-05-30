@@ -11,21 +11,44 @@ export default async function dashboardRoutes(fastify) {
     const thirtyDaysFromNow = new Date(Date.now() + 30 * 86400000).toISOString();
 
     let activeCasesQuery = supabase.from('Case').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE');
-    let todaySessionsQuery = supabase.from('Session').select('*', { count: 'exact', head: true }).gte('sessionDate', today).lt('sessionDate', tomorrow);
     let deadlinesQuery = supabase.from('Case').select('*', { count: 'exact', head: true }).eq('status', 'ACTIVE').lte('limitationDeadline', thirtyDaysFromNow).gte('limitationDeadline', new Date().toISOString());
 
     if (request.user.role === 'LAWYER') {
       activeCasesQuery = activeCasesQuery.eq('assignedLawyerId', request.user.id);
-      todaySessionsQuery = todaySessionsQuery.eq('case.assignedLawyerId', request.user.id);
       deadlinesQuery = deadlinesQuery.eq('assignedLawyerId', request.user.id);
     }
 
-    const [{ count: activeCases }, { count: todaySessions }, { count: upcomingDeadlines }] = await Promise.all([
+    let todaySessions = 0;
+    if (request.user.role === 'LAWYER') {
+      const { data: caseIds } = await supabase
+        .from('Case')
+        .select('id')
+        .eq('assignedLawyerId', request.user.id);
+
+      if (caseIds && caseIds.length > 0) {
+        const ids = caseIds.map(c => c.id);
+        const { count } = await supabase
+          .from('Session')
+          .select('*', { count: 'exact', head: true })
+          .in('caseId', ids)
+          .gte('sessionDate', today)
+          .lt('sessionDate', tomorrow);
+        todaySessions = count || 0;
+      }
+    } else {
+      const { count } = await supabase
+        .from('Session')
+        .select('*', { count: 'exact', head: true })
+        .gte('sessionDate', today)
+        .lt('sessionDate', tomorrow);
+      todaySessions = count || 0;
+    }
+
+    const [{ count: activeCases }, { count: upcomingDeadlines }] = await Promise.all([
       activeCasesQuery,
-      todaySessionsQuery,
       deadlinesQuery,
     ]);
 
-    return { activeCases: activeCases || 0, todaySessions: todaySessions || 0, upcomingDeadlines: upcomingDeadlines || 0 };
+    return { activeCases: activeCases || 0, todaySessions, upcomingDeadlines: upcomingDeadlines || 0 };
   });
 }

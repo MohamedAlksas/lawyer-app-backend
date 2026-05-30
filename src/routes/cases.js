@@ -101,6 +101,7 @@ export default async function caseRoutes(fastify) {
     if (limitationDeadline !== undefined) data.limitationDeadline = limitationDeadline || null;
     if (agreedFee !== undefined) data.agreedFee = parseFloat(agreedFee);
     if (notes !== undefined) data.notes = notes;
+    if (Object.keys(data).length > 0) data.updatedAt = new Date().toISOString();
 
     const { data: updated, error } = await supabase.from('Case').update(data).eq('id', request.params.id).select().single();
     if (error) return reply.status(400).send({ error: error.message });

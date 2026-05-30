@@ -77,6 +77,7 @@ export default async function clientRoutes(fastify) {
     if (address !== undefined) data.address = address;
     if (email !== undefined) data.email = email;
     if (notes !== undefined) data.notes = notes;
+    data.updatedAt = new Date().toISOString();
 
     const { data: client, error } = await supabase
       .from('Client')

@@ -45,6 +45,7 @@ export default async function paymentRoutes(fastify) {
     if (amount !== undefined) data.amount = parseFloat(amount);
     if (paidAt !== undefined) data.paidAt = paidAt;
     if (note !== undefined) data.note = note;
+    data.updatedAt = new Date().toISOString();
 
     const { data: payment, error } = await supabase
       .from('Payment')
