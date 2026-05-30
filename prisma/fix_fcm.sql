@@ -8,6 +8,7 @@ CREATE TABLE IF NOT EXISTS "DeviceToken" (
   UNIQUE("userId", token)
 );
 
+DROP TRIGGER IF EXISTS update_DeviceToken_updatedAt ON "DeviceToken";
 CREATE TRIGGER update_DeviceToken_updatedAt
   BEFORE UPDATE ON "DeviceToken"
-  FOR EACH ROW EXECUTE FUNCTION update_updatedAt_column();
+  FOR EACH ROW EXECUTE FUNCTION update_updated_at_column();
