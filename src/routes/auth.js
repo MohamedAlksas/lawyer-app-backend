@@ -1,10 +1,11 @@
 import bcrypt from 'bcrypt';
 import { supabase } from '../utils/supabase.js';
 import { generateAccessToken, generateRefreshToken, verifyRefreshToken } from '../utils/token.js';
+import { authenticate } from '../middleware/auth.js';
 
 export default async function authRoutes(fastify) {
 
-  fastify.get('/me', { preHandler: [fastify.authenticate] }, async (request, reply) => {
+  fastify.get('/me', { preHandler: [authenticate] }, async (request, reply) => {
     const { data: user, error } = await supabase
       .from('User')
       .select('id, fullName, email, role, isActive, createdAt')
