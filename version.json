@@ -1,7 +1,7 @@
 {
-  "version": "1.0.37",
-  "buildNumber": 37,
-  "downloadUrl": "https://github.com/MohamedAlksas/lawyer-app-flutter/releases/download/v1.0.37/app-debug.apk",
-  "downloadUrlWindows": "https://github.com/MohamedAlksas/lawyer-app-flutter/releases/download/v1.0.37/windows-build.zip",
-  "releaseNotes": "Auto-build 1.0.37"
+  "version": "1.0.44",
+  "buildNumber": 44,
+  "downloadUrl": "https://github.com/MohamedAlksas/lawyer-app-flutter/releases/download/v1.0.44/app-debug.apk",
+  "downloadUrlWindows": "https://github.com/MohamedAlksas/lawyer-app-flutter/releases/download/v1.0.44/lawyer_app_flutter.msix",
+  "releaseNotes": "Auto-build 1.0.44"
 }
