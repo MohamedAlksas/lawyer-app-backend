@@ -43,9 +43,9 @@ async function scheduleNotifications() {
 
       if (reminderType) {
         const userId = session.case.assignedLawyerId;
-        const alreadySent = await hasSentNotification(userId, reminderType, session.id);
-
-        if (!alreadySent) {
+        const dedupKey = `${userId}_${reminderType}_${session.id}`;
+        
+        try {
           console.log(`[Scheduler] Sending ${reminderType} for session ${session.id} to user ${userId}`);
           
           await supabase.from('Notification').insert({
@@ -55,7 +55,8 @@ async function scheduleNotifications() {
             body: `Session for case ${session.case.caseNumber}/${session.case.caseYear} at ${session.courtName}`,
             bodyAr,
             relatedCaseId: session.caseId,
-            metadata: { reminderType, sessionId: session.id }
+            metadata: { reminderType, sessionId: session.id },
+            dedupKey
           });
 
           await sendPushNotification(
@@ -64,6 +65,11 @@ async function scheduleNotifications() {
             bodyAr,
             { type: 'session_reminder', caseId: session.caseId, sessionId: session.id }
           );
+        } catch (e) {
+          // If insert fails due to unique constraint, it means it's already sent
+          if (e.code !== '23505') {
+            console.error('[Scheduler] Error inserting notification:', e);
+          }
         }
       }
     }
@@ -83,9 +89,9 @@ async function scheduleNotifications() {
   } else if (activeCases) {
     for (const caseItem of activeCases) {
       const userId = caseItem.assignedLawyerId;
-      const alreadySent = await hasSentNotification(userId, 'LIMITATION_30D', caseItem.id);
+      const dedupKey = `${userId}_LIMITATION_30D_${caseItem.id}`;
 
-      if (!alreadySent) {
+      try {
         console.log(`[Scheduler] Sending LIMITATION_30D for case ${caseItem.id} to user ${userId}`);
         const titleAr = 'تنبيه التقادم (30 يوم)';
         const bodyAr = `موعد التقادم للقضية ${caseItem.caseNumber}/${caseItem.caseYear} خلال 30 يوماً`;
@@ -97,7 +103,8 @@ async function scheduleNotifications() {
           body: `Case ${caseItem.caseNumber}/${caseItem.caseYear} limitation deadline is within 30 days`,
           bodyAr,
           relatedCaseId: caseItem.id,
-          metadata: { reminderType: 'LIMITATION_30D' }
+          metadata: { reminderType: 'LIMITATION_30D' },
+          dedupKey
         });
 
         await sendPushNotification(
@@ -106,6 +113,10 @@ async function scheduleNotifications() {
           bodyAr,
           { type: 'limitation_alert', caseId: caseItem.id }
         );
+      } catch (e) {
+        if (e.code !== '23505') {
+          console.error('[Scheduler] Error inserting limitation notification:', e);
+        }
       }
     }
   }
