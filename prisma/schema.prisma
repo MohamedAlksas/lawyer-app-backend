@@ -166,6 +166,7 @@ model Notification {
   bodyAr        String?
   isRead        Boolean  @default(false)
   relatedCaseId String?
+  metadata      Json?
   createdAt     DateTime @default(now())
 }
 
