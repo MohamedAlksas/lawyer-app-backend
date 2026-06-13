@@ -53,6 +53,7 @@ model User {
   documents     Document[]
   notifications Notification[]
   clients       Client[]
+  deviceTokens  DeviceToken[]
 }
 
 model Client {
@@ -74,7 +75,7 @@ model Client {
 }
 
 model Case {
-  id                 String      @id @default(uuid())
+  id                 String     @id @default(uuid())
   caseNumber         String
   caseYear           Int
   courtName          String
@@ -82,17 +83,17 @@ model Case {
   caseType           CaseType
   subject            String
   clientId           String
-  client             Client      @relation(fields: [clientId], references: [id])
+  client             Client     @relation(fields: [clientId], references: [id])
   opposingParty      String?
   assignedLawyerId   String
-  assignedLawyer     User        @relation(fields: [assignedLawyerId], references: [id])
-  status             CaseStatus  @default(ACTIVE)
+  assignedLawyer     User       @relation(fields: [assignedLawyerId], references: [id])
+  status             CaseStatus @default(ACTIVE)
   filingDate         DateTime?
   limitationDeadline DateTime?
-  agreedFee          Float       @default(0)
+  agreedFee          Float      @default(0)
   notes              String?
-  createdAt          DateTime    @default(now())
-  updatedAt          DateTime    @updatedAt
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
   sessions           Session[]
   actions            Action[]
   documents          Document[]
