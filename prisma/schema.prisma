@@ -54,6 +54,7 @@ model User {
   notifications Notification[]
   clients       Client[]
   deviceTokens  DeviceToken[]
+  tasks         Task[]
 }
 
 model Client {
@@ -181,4 +182,16 @@ model DeviceToken {
   updatedAt DateTime @updatedAt
 
   @@unique([userId, token])
+}
+
+model Task {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  dueDate     DateTime
+  isCompleted Boolean  @default(false)
+  userId      String
+  user        User     @relation(fields: [userId], references: [id])
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 }

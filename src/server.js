@@ -13,6 +13,7 @@ import notificationRoutes from './routes/notifications.js';
 import notificationTokenRoutes from './routes/notificationTokens.js';
 import dashboardRoutes from './routes/dashboard.js';
 import versionRoutes from './routes/version.js';
+import taskRoutes from './routes/tasks.js';
 import { authenticate } from './middleware/auth.js';
 
 const server = Fastify({ logger: true });
@@ -49,3 +50,4 @@ const start = async () => {
 start();
 
 import('./utils/notificationScheduler.js').catch(() => {});
+(() => {});
