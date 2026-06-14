@@ -47,11 +47,76 @@ export default async function dashboardRoutes(fastify) {
       todaySessions = count || 0;
     }
 
-    const [{ count: activeCases }, { count: upcomingDeadlines }] = await Promise.all([
+    const [{ count: activeCases }, { count: upcomingDeadlinesCount }] = await Promise.all([
       activeCasesQuery,
       deadlinesQuery,
     ]);
 
-    return { activeCases: activeCases || 0, todaySessions, upcomingDeadlines: upcomingDeadlines || 0 };
+    // 1. Today's Sessions (Detailed)
+    let sessionsQuery = supabase
+      .from('Session')
+      .select('id, sessionDate, courtName, case:Case(caseNumber, caseYear)')
+      .gte('sessionDate', today)
+      .lt('sessionDate', tomorrow)
+      .order('sessionDate');
+
+    if (request.user.role === 'LAWYER') {
+      const { data: lawyerCaseIds } = await supabase.from('Case').select('id').eq('assignedLawyerId', request.user.id);
+      if (lawyerCaseIds && lawyerCaseIds.length > 0) {
+        sessionsQuery = sessionsQuery.in('caseId', lawyerCaseIds.map(c => c.id));
+      } else {
+        sessionsQuery = sessionsQuery.eq('id', 'none');
+      }
+    }
+    const { data: todaySessionsList } = await sessionsQuery;
+
+    // 2. Approaching Deadlines (Detailed)
+    let approachingDeadlinesQuery = supabase
+      .from('Case')
+      .select('id, caseNumber, caseYear, limitationDeadline')
+      .eq('status', 'ACTIVE')
+      .gte('limitationDeadline', nowCairo.toISOString())
+      .lte('limitationDeadline', thirtyDaysFromNow)
+      .order('limitationDeadline')
+      .limit(5);
+
+    if (request.user.role === 'LAWYER') {
+      approachingDeadlinesQuery = approachingDeadlinesQuery.eq('assignedLawyerId', request.user.id);
+    }
+    const { data: deadlinesList } = await approachingDeadlinesQuery;
+
+    // 3. Recent Clients
+    const { data: recentClients } = await supabase
+      .from('Client')
+      .select('id, fullName, phone, createdAt')
+      .order('createdAt', { ascending: false })
+      .limit(5);
+
+    // 4. Financial Health (Last 7 days of payments)
+    const sevenDaysAgo = new Date(nowCairo.getTime() - 7 * 86400000).toISOString();
+    let paymentsQuery = supabase
+      .from('Payment')
+      .select('amount, paidAt');
+    
+    if (request.user.role === 'LAWYER') {
+       // Optional: Filter by cases assigned to lawyer if needed, 
+       // but usually admin sees office total. Let's filter for lawyers.
+       const { data: lawyerCaseIds } = await supabase.from('Case').select('id').eq('assignedLawyerId', request.user.id);
+       if (lawyerCaseIds) {
+         paymentsQuery = paymentsQuery.in('caseId', lawyerCaseIds.map(c => c.id));
+       }
+    }
+    
+    const { data: recentPayments } = await paymentsQuery.gte('paidAt', sevenDaysAgo);
+
+    return { 
+      activeCases: activeCases || 0, 
+      todaySessionsCount: todaySessions || 0, 
+      upcomingDeadlinesCount: upcomingDeadlinesCount || 0,
+      sessions: todaySessionsList || [],
+      deadlines: deadlinesList || [],
+      recentClients: recentClients || [],
+      recentPayments: recentPayments || []
+    };
   });
 }
