@@ -39,7 +39,7 @@ export default async function sessionRoutes(fastify) {
 
     let query = supabase
       .from('Session')
-      .select('id, sessionDate, sessionTime, courtName, result, case:Case!inner(id, caseNumber, caseYear, caseType, assignedLawyerId)')
+      .select('id, sessionDate, sessionTime, courtName, result, nextSessionDate, case:Case!inner(id, caseNumber, caseYear, caseType, assignedLawyerId)')
       .gte('sessionDate', monthStart)
       .lt('sessionDate', monthEnd);
 
